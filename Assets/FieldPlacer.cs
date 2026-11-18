@@ -5,9 +5,8 @@ public class FieldPlacer : MonoBehaviour
 {
     [SerializeField] private DamageField fieldPrefab;
     [SerializeField] private Camera cam;
-    [SerializeField] private LayerMask groundLayers = ~0;
-    [SerializeField] private float maxPlaceDistance = 15f;
     [SerializeField] private float cooldown = 3f;
+    [SerializeField] private float forwardOffset = 0.25f;
 
     private float nextPlaceTime;
 
@@ -20,25 +19,34 @@ public class FieldPlacer : MonoBehaviour
     {
         if (Keyboard.current == null || Mouse.current == null) return;
         if (!Keyboard.current.fKey.wasPressedThisFrame) return;
+        if (Time.time < nextPlaceTime) return;
 
-        Debug.Log("F pressed");
+        Vector3 dir = GetAimDirection();
 
-        if (Time.time < nextPlaceTime) { Debug.Log("On cooldown"); return; }
+        Vector3 pos = transform.position + dir * forwardOffset;
+        Quaternion rot = Quaternion.LookRotation(dir, Vector3.up);
 
-        Ray ray = cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        Debug.DrawRay(ray.origin, ray.direction * 1000f, Color.red, 3f);
-        if (!Physics.Raycast(ray, out RaycastHit hit, 1000f, groundLayers))
-        {
-            Debug.Log("Ray hit no ground");
-            return;
-        }
-
-        float dist = Vector3.Distance(transform.position, hit.point);
-        if (dist > maxPlaceDistance) { Debug.Log("Too far: " + dist); return; }
-
-        DamageField field = Instantiate(fieldPrefab, hit.point, Quaternion.identity);
+        DamageField field = Instantiate(fieldPrefab, pos, rot);
         field.Init(transform);
         nextPlaceTime = Time.time + cooldown;
-        Debug.Log("Field placed");
+    }
+
+    // Mouse ray against a flat plane at the player's height: never misses,
+    // never snags on walls or enemies. Falls back to facing forward.
+    private Vector3 GetAimDirection()
+    {
+        Ray ray = cam.ScreenPointToRay(Mouse.current.position.ReadValue());
+        var plane = new Plane(Vector3.up, transform.position);
+
+        if (plane.Raycast(ray, out float t))
+        {
+            Vector3 flat = ray.GetPoint(t) - transform.position;
+            flat.y = 0f;
+            if (flat.sqrMagnitude > 0.01f) return flat.normalized;
+        }
+
+        Vector3 fwd = transform.forward;
+        fwd.y = 0f;
+        return fwd.sqrMagnitude > 0.001f ? fwd.normalized : Vector3.forward;
     }
 }
